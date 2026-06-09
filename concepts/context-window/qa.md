@@ -178,3 +178,269 @@ Balance context size against cost and latency requirements for your specific use
 **Analogy:**
 Bigger desk = more reference material available.
 But bigger desk = more expensive office + longer time to find what you need.
+
+---
+## Q8: What is the quadratic scaling problem in attention?
+
+**Precise answer:**
+Attention computes Q @ K^T which produces a (T, T) matrix.
+Every token is scored against every other token.
+
+T = 10   → 100 computations
+T = 100  → 10,000 computations
+T = 1000 → 1,000,000 computations
+
+Double context = 4x compute. This is O(n²) — quadratic scaling.
+
+**How it relates to context window:**
+Context window defines maximum T.
+Larger context window = larger T = larger attention matrix
+= quadratically more compute and memory.
+This is the fundamental reason context windows cannot grow freely.
+
+**Note:**
+Quadratic scaling comes from the (T, T) attention matrix.
+Not from having three projections Q, K, V.
+Q, K, V are fixed at three regardless of context size.
+
+---
+## Q9: Techniques to handle long contexts beyond context window
+
+**1. Truncation**
+Cut off tokens that don't fit.
+- Drop oldest tokens
+- Drop middle tokens
+- Drop least relevant tokens
+Simple but loses information permanently.
+
+**2. Summarization/Compression**
+Summarize older parts of conversation using an LLM.
+Compressed summary takes fewer tokens than original.
+Inject summary back into context window.
+Loses some detail but preserves key information.
+
+**3. RAG — Retrieval Augmented Generation**
+Store documents outside context window in a vector database.
+Retrieve only the most relevant chunks when needed.
+Inject retrieved chunks into context window.
+Most widely used technique in production systems.
+Covered deeply in Repo 3 of THE PLAN.
+
+**4. Sliding Window Attention**
+Instead of every token attending to every other token,
+each token only attends to a fixed window of nearby tokens.
+Reduces O(n²) to O(n).
+Loses long range dependencies.
+
+**5. Hierarchical Processing**
+Break long document into chunks.
+Summarize each chunk separately.
+Feed summaries into final context.
+Used for very long documents like books.
+
+**6. External Memory Systems**
+Persistent database outside the model.
+Retrieve relevant memories based on current query.
+Inject into context window.
+What you described as pulling from memory.
+
+**Key insight for interviews:**
+RAG is the most practical and widely deployed solution.
+It does not increase context window size.
+It makes better use of the existing context window
+by only injecting what is relevant.
+
+
+---
+## Q11: You have a 100 page document and 8k context window. How do you handle it?
+
+**The math:**
+8k tokens ≈ 12 pages maximum in one context window.
+100 pages cannot fit. Need a strategy.
+
+**Approach 1 — RAG (most common in production)**
+Chunk document into ~500 token pieces.
+Why 500 tokens: small enough to be specific, large enough to be meaningful.
+Too small = chunks lose meaning. Too large = irrelevant content retrieved.
+Store chunks in vector database.
+Retrieve only 3-5 most relevant chunks per query.
+Inject retrieved chunks into context window.
+Best for: Question answering over large documents.
+
+**Approach 2 — Hierarchical Summarization**
+Split into 12 page chunks — not one summary per page.
+100 pages = roughly 8 chunks of 12 pages each.
+Summarize each chunk separately using LLM.
+All 8 summaries fit into one final context window.
+Final LLM call synthesizes all summaries.
+Best for: Questions needing overview of entire document.
+
+**Approach 3 — Map Reduce**
+Send each chunk to LLM with the question separately.
+Collect all partial answers.
+Final LLM call synthesizes all partial answers.
+Best for: Finding all mentions of something across entire document.
+Example: Find every reference to "climate change" across 100 pages.
+
+**Approach 4 — Sliding Window over Chunks**
+Process document in overlapping windows.
+Window 1: pages 1-12
+Window 2: pages 6-18
+Window 3: pages 12-24
+Pages 6-12 appear in both Window 1 and Window 2.
+Overlap ensures boundary content gets processed twice — nothing missed.
+Best for: Sequential documents where context flows across pages.
+
+**Important note:**
+Sliding window attention = model architecture change, cannot apply to existing LLMs.
+Sliding window over chunks = engineering technique, works with any LLM.
+These are two different things.
+---
+
+## Q12: What is lost context and how do you mitigate it?
+
+**Definition:**
+Any situation where relevant information is unavailable
+or ignored when the model generates a response.
+
+**Three types and mitigations:**
+
+**Type 1 — Truncation Loss**
+What: Context window exceeded, oldest tokens dropped.
+Model forgets earlier conversation.
+Mitigation:
+- Summarize old conversation before dropping
+- Memory: simple persistent store of key facts
+  Example: save "user's name is X" or "we decided Y earlier"
+  Inject these facts into every new context window
+  Simpler than RAG — just key value pairs, not vector search
+- Increase context window size if model allows
+
+**Type 2 — RAG Retrieval Loss**
+What: Relevant chunk exists in document but retrieval missed it.
+Wrong embedding, bad chunking, or query mismatch.
+Mitigation:
+- Better chunking: keep related content together in one chunk
+- Hybrid search: find chunks by meaning AND exact keywords
+- Reranking: retrieve top 10, then score again, keep top 3
+- Query expansion: rephrase question multiple ways, retrieve for each
+- Retrieve more chunks: cast wider net, top 10 instead of top 3
+
+**Type 3 — Lost in the Middle**
+What: Information present in context window but model ignores it.
+Models attend strongly to beginning and end.
+Middle content gets relatively less attention.
+Mitigation:
+- Put most important information at beginning or end of context
+- Reorder RAG chunks — most relevant chunk first or last
+- Use smaller context windows so middle is closer to edges
+- Use models trained specifically for long context tasks
+
+**Your instinct about multiple versions:**
+Similar to query expansion — run multiple versions of query,
+retrieve chunks for each, take union, remove duplicates.
+Increases chance of capturing relevant content.
+
+---
+
+## Q13: How does RAG solve the context window limitation?
+
+**The problem:**
+100 page document cannot fit in 8k context window.
+
+**How RAG solves it:**
+RAG does not increase the context window.
+It makes smarter use of the existing context window.
+
+Step 1: Chunk entire document into ~500 token pieces
+Step 2: Store all chunks in vector database
+Step 3: When question arrives retrieve only 3-5 relevant chunks
+Step 4: Inject only those chunks into context window
+Step 5: LLM answers using only relevant chunks
+
+**Why 500 tokens per chunk:**
+- Too small: chunks lose meaning
+- Too large: irrelevant content retrieved alongside relevant
+- 500 tokens is a common starting point, tuned per use case
+
+**Key insight:**
+RAG trades perfect recall for practical scalability.
+It assumes the answer lives in a small subset of the document.
+If retrieval fails the answer fails — retrieval quality is critical.
+
+**Analogy:**
+Instead of reading entire library before answering,
+a smart librarian finds the 3 most relevant pages for your question.
+You answer based on those 3 pages.
+Fast, cheap, usually correct.
+
+---
+
+## Q14: What is the lost in the middle problem?
+
+**Definition:**
+When relevant information exists inside the context window
+but the model ignores it because it sits in the middle.
+
+Not about information lost during chunking or summarization.
+The information is present. The model just does not attend to it.
+
+**Why it happens:**
+Attention mechanism naturally focuses more on:
+- Beginning of context — primacy effect
+- End of context — recency effect
+- Middle receives relatively less attention weight
+
+**Research finding:**
+Models perform significantly worse when the answer
+is in the middle of a long context vs beginning or end.
+Performance drops as context length increases.
+
+**Connection to needle in haystack:**
+Needle in haystack = test where specific fact is hidden in long context.
+Lost in the middle = reason model fails when needle is in the middle.
+Same problem, different framing.
+
+**Mitigation:**
+- Put most important information at beginning or end of context
+- Reorder RAG chunks — most relevant chunk first or last
+- Use smaller context windows — middle is closer to edges
+- Use models trained specifically for long context tasks
+
+**Implication for RAG:**
+When injecting retrieved chunks always put most relevant
+chunk first or last. Never bury it in the middle.
+
+---
+
+## Q15: How do you decide what to put in context window when space is limited?
+
+**Core principle:**
+Context window is a limited budget. Spend it on what matters most.
+
+**Always keep — non negotiable:**
+- System prompt: defines model behavior
+- User's current question: without this model cannot answer
+- Top ranked RAG chunks: most relevant content by relevance score
+
+**Cut first:**
+- Old conversation history → summarize, don't keep full text
+- Low relevance RAG chunks → keep top 3, drop the rest
+- Redundant system prompt instructions → trim down
+
+**Decision framework:**
+- Does this change the answer? No → drop it
+- Is this available in vector DB? Yes → retrieve on demand, don't keep in context
+- Is this recent or old? Old → summarize or drop
+- Is this large? Yes → compress first
+
+**One critical rule:**
+Most important content goes first or last — never in the middle.
+Lost in the middle problem means middle content gets ignored.
+
+**Who does this:**
+AI Engineer — not the model trainer.
+You build the system around the model.
+You decide what goes into the context window.
+Model trainer decides the context window size.
+You decide what fills it.
