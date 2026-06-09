@@ -138,3 +138,18 @@ Flat softmax = very small gradients = slow or broken training.
 ```python
 scores = q @ k.transpose(-2, -1) * head_size**-0.5
 ```
+
+### 7. Layer Norm vs Batch Norm
+
+Batch Norm: normalizes across batch dimension
+- Depends on other examples in batch
+- Unstable at batch size 1
+- Used in CNNs
+
+Layer Norm: normalizes across feature dimension  
+- Each example normalized independently
+- Works at any batch size including 1
+- Used in Transformers
+
+Pre-norm: apply layer norm before attention/feedforward (modern)
+Post-norm: apply layer norm after attention/feedforward (original paper)
