@@ -444,3 +444,19 @@ You build the system around the model.
 You decide what goes into the context window.
 Model trainer decides the context window size.
 You decide what fills it.
+
+
+---
+Level 4 — Technical Deep Dive
+Q16: What is KV cache and how does it relate to context window?
+Q17: What is context compression and when would you use it?
+Q18: How do models like Gemini achieve very large context windows?
+Q19: What is the role of positional encoding in context window limits?
+Q20: What tradeoffs come with very large context windows like 1M tokens?
+
+Additional questions
+Q21: What is the difference between context window and model knowledge?
+Q22: How do you handle multi-turn conversations efficiently within a context window?
+Q23: What is prompt caching and how does it reduce context window costs?
+Q24: How does context window management differ between chatbot and agent systems?
+Q25: If a user complains your AI app is forgetting things mid conversation what do you diagnose first?
